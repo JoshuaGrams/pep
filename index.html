@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>A Pint-sized Earley Parser</title>
+    <script src="earley.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="content">
+
+<h1>A Pint-sized Earley Parser</h1>
+
+<p>Many people have said that convenient parser generation is a
+game-changing technology.  In his talk <em>To Trap a Better Mouse</em>,
+Ian Piumarta <a href="https://youtu.be/EGeN2IC7N0Q?t=41m">suggested</a>
+that the Earley algorithm is a good place to start because it handles
+full context-free grammars and is fairly trivial to implement.  But some
+parts of the algorithm (particularly the construction of the parse
+forest) don't seem to have good descriptions which are easily accessible
+to non-experts.</p>
+
+<p>So this is an attempt to fill that gap: a trivial realization of the
+algorithm, suitable for implementation in an afternoon, and with an
+annotated version for easy understanding and porting.  I'm deliberately
+being fairly concise: for a more detailed description, see Loup
+Vaillant-David's <a
+href="http://loup-vaillant.fr/tutorials/earley-parsing/">Earley Parsing
+Explained</a> which goes into far more detail.</p>
+
+<p>This is annotated pseudocode.  I was going to annotate the
+JavaScript, but JavaScript has a lot of "noise", so I reduced it to
+pseudocode for readability.  The <a href="earley.js">JavaScript
+source</a> is available if you prefer that.</p>
+
+<ul>
+    <li><a href="#recognizer">The Recognizer</a></li>
+    <ul>
+        <li><a href="#data-structures">Data Structures</a></li>
+        <li><a href="#algorithm">The Algorithm</a></li>
+    </ul>
+    <li><a href="#parser">The Parser</a></li>
+	<li><a href="#future">Future Work</a></li>
+</ul>
+
+<h2><a name="recognizer">The Recognizer</a></h2>
+
+<p class="note">Note: This part of the algorithm is well-covered: the
+presentation in Aycock and Horspool's <a
+href="http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.12.4254">Practical
+Earley Parsing</a> is excellent, and <a
+href="https://en.wikipedia.org/wiki/Earley_parser">Wikipedia's entry</a>
+isn't too bad.  But I am using a modified formulation which builds only
+one set at once, adds additional items which will be useful for the
+parser, and does not make a distinction between terminal and
+non-terminal symbols, so you probably want to read this section
+anyway.</p>
+
+
+<h3><a name="data-structures">Data Structures</a></h3>
+
+<p>Let's start with some basic data structures: a Rule has a symbol on
+the left hand side, and an array of symbols on the right.  A Grammar has
+a start symbol and a set of rules indexed by symbol.  Note that there
+may be multiple rules for the same symbol: this is the only way that we
+support alternatives in rules.</p>
+
+<pre><code>Rule : { String symbol, Array production }
+Grammar : {
+    String start,
+    Dictionary([Rule]) rules
+        // { "S": [S -&gt; X Y, S -&gt; A A b], ...}
+}</code></pre>
+
+<p>An <strong>LR(0) item</strong> represents a partially matched rule
+and is generally written with a dot showing the end of the match, so
+<code class="no-wrap">S &#8594; Expression "+" &bull; Term</code> would
+indicate that an <code>Expression</code> and <code>"+"</code> have been
+matched.</p>
+
+<code><pre>LR0 : { Rule rule, Integer dot }
+next_symbol(lr0) =
+    if(lr0.dot &lt; lr0.rule.length) rule.production[rule.dot]</pre></code>
+
+<p>In this implementation we never use complete LR(0) items: we always
+promote them to a symbol so that all parse trees for a symbol will be
+combined under one Earley item no matter which production they derive
+from.</p>
+
+<pre><code>advance(lr0) =
+    if(lr0.dot == lr0.rule.length) lr0.rule.symbol
+    else {lr0.rule, lr0.dot+1}</code></pre>
+
+<p>Earley's algorithm works by keeping a table of all possible matches
+(partial and complete) for each portion of the input string. So an
+<strong>Earley item</strong> consists of a symbol (for complete matches)
+or an LR(0) item (for partial matches) plus the positions in the input
+sequence where the match starts and ends.</p> 
+
+<pre><code>Item : { Symbol | LR0 : tag, Set start, Set end }</code></pre>
+
+<p>Then an <strong>Earley set</strong> contains all Earley items which
+end at a particular position.  My sets also contain a pointer to the
+grammar for convenient access and a couple of indices so we can quickly
+find the items we need to look at.</p>
+
+<pre><code>Set : {
+    Grammar grammar,
+    Integer position,  // index into the input sequence
+    Array items,       // items for iteration/processing
+    Dictionary idx,    // items by tag and start for uniqueness
+    Dictionary wants,  // incomplete items by next symbol
+} 
+
+append_item(tag, start, end) =
+    item = {tag, start, end}
+    end.items.push(item)
+    end.idx[tag][start] = item
+    if(tag.is_lr0) end.wants[tag.rule.symbol].push(item)
+    item  // return item</code></pre>
+
+<p>To preserve uniqueness we only call <code>add_item</code> if the item
+doesn't already exist.</p>
+
+<pre><code>add_item(tag, start, end) =
+    end.idx[tag][start] || append_item(tag, start, end)</code></pre>
+
+
+<h3><a name="algorithm">The Algorithm</a></h3>
+
+<p>We start with an initial set containing rules for the start symbol
+and any items derived from those.  Then we build a set for each
+successive input symbol.  When we reach the end of the string, if we
+have a complete item for the start symbol matching the entire string
+then the parse has succeeded.</p>
+
+<pre><code>parse(grammar, input) =
+    s0 = process(predict(new Set(grammar, 0), grammar.start))
+    sN = foldl(parse_symbol, s0, input)
+    sN.idx[grammar.start][0]
+
+parse_symbol(set, sym) = process(scan(set, sym))</code></pre>
+
+<p>Like most parsers, Earley's works from both ends. It
+<em>predicts</em> which rules to match from the top down, but
+<em>completes</em> matches from the bottom up.</p>
+
+<p>Prediction adds new LR(0) items (with the dot at the beginning) for
+all rules for a particular symbol.</p>
+
+<pre><code>predict(set, sym) =
+    for rule in set.grammar.rules[sym]
+        add_item({rule, 0}, set, set)
+</code></pre>
+
+<p>When an item is complete, we look back to the set where it started
+and advance any partial items there which were looking for the completed
+symbol.</p>
+
+<pre><code>complete(set, complete) =
+    for item in complete.start.wants[complete.tag]
+        add_item(advance(item.tag), item.start, complete.end)</code></pre>
+
+<p>To initialize a new set, we <em>scan</em> an input symbol, adding a
+(completely matched) item for that symbol.  Note that the traditional
+Earley algorithm does <em>not</em> have items for terminal symbols, and
+the scan operation advances all items which are looking for the input
+symbol.  But for creating the parse trees, it's convenient to have an
+item for the input symbol.  And since we don't distinguish between
+terminal and non-terminal symbols, our scan can just add a single item
+for the input symbol and let the completer do all the advancing.</p>
+
+<pre><code>scan(set1, sym) =
+    set2 = new Set(set1.grammar, set1.position + 1)
+    add_item(sym, set1, set2)
+    set2  // return the new set</code></pre>
+
+<p>Then we process items recursively with <code>predict()</code> and
+<code>complete()</code>.</p>
+
+<pre><code>process_once(set) =
+    for(item in set.items)  // including newly-added ones
+        if(item.tag.is_lr0) predict(set, next_symbol(item.tag))
+        else complete(item)</code></pre>
+
+<p>If there are rules which produce the empty string, this may fail to
+produce all the necessary items (see Aycock and Horspool's <a
+href="http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.12.4254">Practical
+Earley Parsing</a> for more info).  There are better ways to deal with
+this, but we're just going to keep trying again until it fails to add
+any items.</p>
+
+<pre><code>process(set) =
+    old = set.items.length
+    do  process_once(set)  while(set.items.length &gt; old)
+    set  // return the set for foldl's convenience</code></pre>
+
+
+
+<h2><a name="parser">The Parser</a></h2>
+
+<p>To extend the parser to a recognizer, we follow the technique of
+Elizabeth Scott's paper <a
+href="http://www.sciencedirect.com/science/article/pii/S1571066108001497">SPPF-style
+Parsing from Earley Recognizers</a> and add a shared packed parse forest
+(SPPF) node to each Earley item.  She adds a pointer to a separate
+object, but I have just built them directly into the Earley items.</p>
+
+<p>Input symbol nodes are their own derivation, so they have no
+children.  Predictions start with no derivations.</p>
+
+<p>The completer extends the parse forest of a previous item, adding the
+derivation(s) for the completed symbol.  So we only need two pointers: a
+<em>left</em> pointer to the previous Earley item (if any) and a
+<em>right</em> pointer to the newly-matched item.</p>
+
+<p>So now <code>add_item</code> needs to add the item if it doesn't
+exist, and then add the new derivation in either case.</p>
+
+<pre><code>add_item(tag, start, end, left=null, right=null) =
+    item = add_item(tag, start, end)  // call old version
+    add_derivation(item, left, right)</code></pre>
+
+<p>The <code>scan</code> and <code>predict</code> routines are
+unchanged. They add nodes with no derivation, so the default null
+pointers are what we want.  But <code>complete</code> needs to pass the
+old item and the completed item as the derivation for the new one.  So
+we insert the new parameters into the <code>add_item</code> call, giving
+this.</p>
+
+<pre><code>complete(set, complete) =
+    for item in complete.start.wants[complete.tag]
+        add_item(advance(item.tag), item.start, complete.end<span class="inserted">,
+			item, complete</span>)</code></pre>
+
+<p>The contents of the parse pointers fall into three classes:</p>
+
+<table class="center">
+	<tr><th>Links</th><th>Meaning</th></tr>
+	<tr><td>null/null</td><td>no derivations</td></tr>
+	<tr><td>null/item<br>item/item</td><td>single derivation</td></tr>
+	<tr><td>list/null</td><td>multiple derivations</td></tr>
+</table>
+
+<p>Items with ambiguous parses have a linked list of objects, each of
+which represents one derivation.</p>
+
+<pre><code>Derivation : { Item left, Item right, Derivation next }</code></pre>
+
+<p><code>add_derivation</code> needs to handle each of the three
+classes.  It also removes some unnecessary nodes on the left edge of the
+tree.  We don't need to point to predictions, so if the dot is at the
+beginning, we replace that with its (null) right pointer.  Similarly, if
+we have an item with two child symbols, we replace the left pointer (an
+LR(0) item with only one child) with the item for the child symbol
+itself.</p>
+
+<pre><code>add_derivation(item, left, right) {
+	if(!(left || right)) return  // empty derivation
+
+	// remove trivial nodes on the left
+	if(left.tag.is_lr0 and left.tag.dot &lt;= 1) left = left.right
+
+	if(!(item.left || item.right))
+		set_derivation(item, left, right)
+	else if(item.right)
+		add_second_derivation(item, left, right)
+	else
+		add_another_derivation(item, left, right)</code></pre>
+
+<p>The <code>set_derivation</code> function is trivial.  But if there
+are existing derivations we'll need to check whether the new one is
+already present.</p>
+
+<pre><code>set_derivation(item, left, right) =
+	item.left = left
+	item.right = right
+
+same_derivation(item, left, right) =
+	item.left == left &amp;&amp; item.right == right</code></pre>
+
+<p>The <code>add_second_derivation</code> function needs to extract the
+first derivation to a list node and then add the new one.</p>
+
+<pre><code>add_second_derivation(item, left, right) =
+	if(!same_derivation(item, left, right))
+		old = {item.left, item.right, null}
+		item.left = {left, right, old}
+		item.right = null</code></pre>
+
+<p>Finally, if there are multiple existing derivations, we need to
+search the list to see if the derivation is present.</p>
+
+<pre><code>add_another_derivation(item, left, right) =
+	d = item.left;  while(d)
+		if(same_derivation(d, left, right)) return
+		d = d.next
+	item.left = {left, right, item.left}</code></pre>
+
+
+
+<h2><a name="future">Future Work</a></h2>
+
+<p>I'm excited about finally getting this to work, so I'm writing this
+up and posting it right away.  But this is just the core parsing
+algorithm: I want to at <em>least</em> write a parse forest visualizer
+and set up a page with a demo grammar where you can enter text and see
+the resulting forest.</p>
+
+<p>And to be really usable at all it needs a means to enter grammars in
+a convenient notation, a way to choose a parse tree from the forest, and
+a way to attach actions to rules.  I hope to get to this soon, but
+realistically it might be a month or three before I get around to
+finishing all of it.</p>
+
+</div>
+
+</body>
+</html>
