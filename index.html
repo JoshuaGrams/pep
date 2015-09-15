@@ -209,15 +209,15 @@ forest (SPPF) node to each Earley item, as described in Elizabeth
 Scott's paper <a
 href="http://www.sciencedirect.com/science/article/pii/S1571066108001497">SPPF-style
 Parsing from Earley Recognizers</a>.  She uses a pointer to a separate
-object, but I have built the parse nodes directly into the Earley
-items.</p>
+object, but I am using the Earley items themselves as parse forest
+nodes.</p>
 
 <p>Scanning produces input symbol nodes which are their own derivation.
 Predictions start with no derivations.  The completer appends the
 derivation of the newly completed symbol to the derivation of the item
-it is advancing.  So a binary tree node suffices: we just need a
-<em>left</em> pointer to the previous Earley item (if any) and a
-<em>right</em> pointer to the new item.</p>
+it is advancing.  So a we just need to augment the Earley items with two
+pointers: a <em>left</em> pointer to the previous Earley item (if any)
+and a <em>right</em> pointer to the new item.</p>
 
 <p>The <code>scan</code> and <code>predict</code> routines are
 unchanged, since they add nodes with no derivation.  But
