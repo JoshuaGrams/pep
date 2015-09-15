@@ -24,8 +24,7 @@ to non-experts.</p>
 <p>So this is an attempt to fill that gap: a trivial realization of the
 algorithm, suitable for implementation in an afternoon, and with an
 annotated version for easy understanding and porting.  I'm deliberately
-being fairly concise: for a more detailed description, see Loup
-Vaillant-David's <a
+being fairly concise: for more information try Loup Vaillant-David's <a
 href="http://loup-vaillant.fr/tutorials/earley-parsing/">Earley Parsing
 Explained</a> which goes into far more detail.</p>
 
@@ -43,7 +42,7 @@ href="https://github.com/JoshuaGrams/pep">github.com/JoshuaGrams/pep</p>
         <li><a href="#algorithm">The Algorithm</a></li>
     </ul>
     <li><a href="#parser">The Parser</a></li>
-	<li><a href="#future">Future Work</a></li>
+    <li><a href="#future">Future Work</a></li>
 </ul>
 
 <h2><a name="recognizer">The Recognizer</a></h2>
@@ -62,13 +61,14 @@ anyway.</p>
 
 <h3><a name="data-structures">Data Structures</a></h3>
 
-<p>Let's start with some basic data structures: a Rule has a symbol on
-the left hand side, and an array of symbols on the right.  A Grammar has
-a start symbol and a set of rules indexed by symbol.  Note that there
-may be multiple rules for the same symbol: this is the only way that we
-support alternatives in rules.</p>
+<p>Let's start with some basic data structures.  A <strong>Rule</strong>
+has a symbol on the left hand side, and an array of symbols on the
+right.  A <strong>Grammar</strong> has a start symbol and a set of rules
+indexed by symbol.  Note that there may be multiple rules for the same
+symbol: this is the only way that we support alternatives in rules.</p>
 
 <pre><code>Rule : { String symbol, Array production }
+
 Grammar : {
     String start,
     Dictionary([Rule]) rules
@@ -92,22 +92,21 @@ from.</p>
 
 <pre><code>advance(lr0) =
     if(lr0.dot == lr0.rule.length) lr0.rule.symbol
-    else {lr0.rule, lr0.dot+1}</code></pre>
+    else new LR0(lr0.rule, lr0.dot+1)</code></pre>
 
-<p>Earley's algorithm works by keeping a table of all possible matches
-(partial and complete) for each portion of the input string. So an
-<strong>Earley item</strong> consists of a symbol (for complete matches)
-or an LR(0) item (for partial matches) plus the positions in the input
-sequence where the match starts and ends.</p> 
+<p>Earley's algorithm works by keeping a table of all possible matches,
+both partial and complete.  These are organized into <strong>Earley
+sets</strong> by the input position where the match ends.  My sets also
+contain a couple of indices and a reference to the grammar so we can
+quickly find the items and rules we need to look at.</p>
 
-<pre><code>Item : { Symbol | LR0 : tag, Set start, Set end }</code></pre>
+<p>An <strong>Earley item</strong> consists of a symbol (for complete
+matches) or an LR(0) item (for partial matches) plus references to the
+sets (and hence input positions) where the match starts and ends.</p>
 
-<p>Then an <strong>Earley set</strong> contains all Earley items which
-end at a particular position.  My sets also contain a pointer to the
-grammar for convenient access and a couple of indices so we can quickly
-find the items we need to look at.</p>
+<pre><code>Item : { Symbol | LR0 : tag, Set start, Set end }
 
-<pre><code>Set : {
+Set : {
     Grammar grammar,
     Integer position,  // index into the input sequence
     Array items,       // items for iteration/processing
@@ -116,14 +115,14 @@ find the items we need to look at.</p>
 } 
 
 append_item(tag, start, end) =
-    item = {tag, start, end}
+    item = new Item(tag, start, end)
     end.items.push(item)
     end.idx[tag][start] = item
     if(tag.is_lr0) end.wants[tag.rule.symbol].push(item)
     item  // return item</code></pre>
 
-<p>To preserve uniqueness we only call <code>add_item</code> if the item
-doesn't already exist.</p>
+<p>To preserve uniqueness we only call <code>append_item</code> if the
+item doesn't already exist.</p>
 
 <pre><code>add_item(tag, start, end) =
     end.idx[tag][start] || append_item(tag, start, end)</code></pre>
@@ -148,12 +147,12 @@ parse_symbol(set, sym) = process(scan(set, sym))</code></pre>
 <em>predicts</em> which rules to match from the top down, but
 <em>completes</em> matches from the bottom up.</p>
 
-<p>Prediction adds new LR(0) items (with the dot at the beginning) for
-all rules for a particular symbol.</p>
+<p>Prediction makes new LR(0) items (with the dot at the beginning) from
+each of a symbol's rules.</p>
 
 <pre><code>predict(set, sym) =
     for rule in set.grammar.rules[sym]
-        add_item({rule, 0}, set, set)
+        add_item(new LR0(rule, 0), set, set)
 </code></pre>
 
 <p>When an item is complete, we look back to the set where it started
@@ -164,14 +163,14 @@ symbol.</p>
     for item in complete.start.wants[complete.tag]
         add_item(advance(item.tag), item.start, complete.end)</code></pre>
 
-<p>To initialize a new set, we <em>scan</em> an input symbol, adding a
-(completely matched) item for that symbol.  Note that the traditional
-Earley algorithm does <em>not</em> have items for terminal symbols, and
-the scan operation advances all items which are looking for the input
-symbol.  But for creating the parse trees, it's convenient to have an
-item for the input symbol.  And since we don't distinguish between
-terminal and non-terminal symbols, our scan can just add a single item
-for the input symbol and let the completer do all the advancing.</p>
+<p>To initialize a new set, we <em>scan</em> an input symbol, adding an
+item for that symbol.  Note that the traditional Earley algorithm does
+<em>not</em> have items for terminals, and the scan operation advances
+all items which are looking for the input symbol.  But it's convenient
+to have an item for the input symbol when creating the parse forest.
+And since we don't distinguish between terminal and non-terminal
+symbols, our scan can just add a single item for the input symbol and
+let the completer do all the advancing.</p>
 
 <pre><code>scan(set1, sym) =
     set2 = new Set(set1.grammar, set1.position + 1)
@@ -179,7 +178,9 @@ for the input symbol and let the completer do all the advancing.</p>
     set2  // return the new set</code></pre>
 
 <p>Then we process items recursively with <code>predict()</code> and
-<code>complete()</code>.</p>
+<code>complete()</code>.  We predict rules for the next symbol of any
+partial matches, and to look back and advance items which match any
+newly completed items.</p>
 
 <pre><code>process_once(set) =
     for(item in set.items)  // including newly-added ones
@@ -202,47 +203,38 @@ any items.</p>
 
 <h2><a name="parser">The Parser</a></h2>
 
-<p>To extend the parser to a recognizer, we follow the technique of
-Elizabeth Scott's paper <a
+<p>To extend the parser to a recognizer, we add a shared packed parse
+forest (SPPF) node to each Earley item, as described in Elizabeth
+Scott's paper <a
 href="http://www.sciencedirect.com/science/article/pii/S1571066108001497">SPPF-style
-Parsing from Earley Recognizers</a> and add a shared packed parse forest
-(SPPF) node to each Earley item.  She adds a pointer to a separate
-object, but I have just built them directly into the Earley items.</p>
+Parsing from Earley Recognizers</a>.  She uses a pointer to a separate
+object, but I have built the parse nodes directly into the Earley
+items.</p>
 
-<p>Input symbol nodes are their own derivation, so they have no
-children.  Predictions start with no derivations.</p>
-
-<p>The completer extends the parse forest of a previous item, adding the
-derivation(s) for the completed symbol.  So we only need two pointers: a
+<p>Scanning produces input symbol nodes which are their own derivation.
+Predictions start with no derivations.  The completer appends the
+derivation of the newly completed symbol to the derivation of the item
+it is advancing.  So a binary tree node suffices: we just need a
 <em>left</em> pointer to the previous Earley item (if any) and a
-<em>right</em> pointer to the newly-matched item.</p>
-
-<p>So now <code>add_item</code> needs to add the item if it doesn't
-exist, and then add the new derivation in either case.</p>
-
-<pre><code>add_item(tag, start, end, left=null, right=null) =
-    item = add_item(tag, start, end)  // call old version
-    add_derivation(item, left, right)</code></pre>
+<em>right</em> pointer to the new item.</p>
 
 <p>The <code>scan</code> and <code>predict</code> routines are
-unchanged. They add nodes with no derivation, so the default null
-pointers are what we want.  But <code>complete</code> needs to pass the
-old item and the completed item as the derivation for the new one.  So
-we insert the new parameters into the <code>add_item</code> call, giving
-this.</p>
+unchanged, since they add nodes with no derivation.  But
+<code>complete</code> needs to (potentially) add a new derivation,
+regardless of whether it adds a new item.</p>
 
 <pre><code>complete(set, complete) =
     for item in complete.start.wants[complete.tag]
-        add_item(advance(item.tag), item.start, complete.end<span class="inserted">,
-			item, complete</span>)</code></pre>
+        <span class="inserted">a = </span>add_item(advance(item.tag), item.start, complete.end)
+        <span class="inserted">add_derivation(a, item, complete)</span></code></pre>
 
 <p>The contents of the parse pointers fall into three classes:</p>
 
 <table class="center">
-	<tr><th>Links</th><th>Meaning</th></tr>
-	<tr><td>null/null</td><td>no derivations</td></tr>
-	<tr><td>null/item<br>item/item</td><td>single derivation</td></tr>
-	<tr><td>list/null</td><td>multiple derivations</td></tr>
+    <tr><th>Links</th><th>Meaning</th></tr>
+    <tr><td>null/null</td><td>no derivations</td></tr>
+    <tr><td>null/item<br>item/item</td><td>single derivation</td></tr>
+    <tr><td>list/null</td><td>multiple derivations</td></tr>
 </table>
 
 <p>Items with ambiguous parses have a linked list of objects, each of
@@ -252,53 +244,47 @@ which represents one derivation.</p>
 
 <p><code>add_derivation</code> needs to handle each of the three
 classes.  It also removes some unnecessary nodes on the left edge of the
-tree.  We don't need to point to predictions, so if the dot is at the
-beginning, we replace that with its (null) right pointer.  Similarly, if
-we have an item with two child symbols, we replace the left pointer (an
-LR(0) item with only one child) with the item for the child symbol
-itself.</p>
+tree.  If the left child is an LR(0) item with one or no children, then
+we skip it and use its child (if any) directly.</p>
 
 <pre><code>add_derivation(item, left, right) {
-	if(!(left || right)) return  // empty derivation
+    if(!(left || right)) return  // empty derivation
 
-	// remove trivial nodes on the left
-	if(left.tag.is_lr0 and left.tag.dot &lt;= 1) left = left.right
+    // remove trivial nodes on the left
+    if(left.tag.is_lr0 and left.tag.dot &lt;= 1) left = left.right
 
-	if(!(item.left || item.right))
-		set_derivation(item, left, right)
-	else if(item.right)
-		add_second_derivation(item, left, right)
-	else
-		add_another_derivation(item, left, right)</code></pre>
+    if(!(item.left || item.right)) set_derivation(item, left, right)
+    else if(item.right) add_second_derivation(item, left, right)
+    else add_another_derivation(item, left, right)</code></pre>
 
-<p>The <code>set_derivation</code> function is trivial.  But if there
-are existing derivations we'll need to check whether the new one is
-already present.</p>
+<p>If there aren't any derivations yet, we just set the new one.  But if
+there <em>are</em> existing derivations we'll need to check whether the
+new one is already present.</p>
 
 <pre><code>set_derivation(item, left, right) =
-	item.left = left
-	item.right = right
+    item.left = left
+    item.right = right
 
 same_derivation(item, left, right) =
-	item.left == left &amp;&amp; item.right == right</code></pre>
+    item.left == left &amp;&amp; item.right == right</code></pre>
 
-<p>The <code>add_second_derivation</code> function needs to extract the
-first derivation to a list node and then add the new one.</p>
+<p>If there is one existing derivation, we need to turn it into a list
+of one item and then add the new one.</p>
 
 <pre><code>add_second_derivation(item, left, right) =
-	if(!same_derivation(item, left, right))
-		old = {item.left, item.right, null}
-		item.left = {left, right, old}
-		item.right = null</code></pre>
+    if(!same_derivation(item, left, right))
+        old = new Derivation(item.left, item.right, null)
+        item.left = new Derivation(left, right, old)
+        item.right = null</code></pre>
 
 <p>Finally, if there are multiple existing derivations, we need to
 search the list to see if the derivation is present.</p>
 
 <pre><code>add_another_derivation(item, left, right) =
-	d = item.left;  while(d)
-		if(same_derivation(d, left, right)) return
-		d = d.next
-	item.left = {left, right, item.left}</code></pre>
+    d = item.left;  while(d)
+        if(same_derivation(d, left, right)) return
+        d = d.next
+    item.left = new Derivation(left, right, item.left)</code></pre>
 
 
 

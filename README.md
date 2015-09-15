@@ -11,9 +11,8 @@ which are easily accessible to non-experts.
 So this is an attempt to fill that gap: a trivial realization of the
 algorithm, suitable for implementation in an afternoon, and with an
 annotated version for easy understanding and porting.  I'm deliberately
-being fairly concise: for a more detailed description, see Loup
-Vaillant-David's [Earley Parsing Explained][2] which goes into far more
-detail.
+being fairly concise: for more information try Loup Vaillant-David's
+[Earley Parsing Explained][2] which goes into far more detail.
 
 [1]: https://youtu.be/EGeN2IC7N0Q?t=41m
 [2]: http://loup-vaillant.fr/tutorials/earley-parsing/
