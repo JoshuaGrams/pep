@@ -154,7 +154,7 @@ var Rule, Grammar;
 	function add_second_derivation(i, l, r) {
 		if(!same_derivation(i, l, r)) {
 			var old = new Derivation(i.left, i.right, null);
-			i.left = new Derivation(l, r, i.left);
+			i.left = new Derivation(l, r, old);
 			delete(i.right);
 		}
 	}
