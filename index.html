@@ -42,6 +42,7 @@ href="https://github.com/JoshuaGrams/pep">github.com/JoshuaGrams/pep</p>
         <li><a href="#algorithm">The Algorithm</a></li>
     </ul>
     <li><a href="#parser">The Parser</a></li>
+	<li><a href="#demo">A Trivial Demonstration</a></li>
     <li><a href="#future">Future Work</a></li>
 </ul>
 
@@ -288,19 +289,44 @@ search the list to see if the derivation is present.</p>
 
 
 
+<h2><a name="demo">A Trivial Demonstration</a></h2>
+
+<pre><code>g = Grammar('S',
+	S -&gt; X X b
+	X -&gt;
+	X -&gt; a
+	X -&gt; a a
+	X -&gt; a a a)
+
+parse(g, 'aaab')</code></pre>
+
+<div id="forest"></div>
+<script src="demo.js"></script>
+<script>
+var g = new Grammar('S', [
+		new Rule('S', ['X', 'X', 'b']),
+		new Rule('X', []),
+		new Rule('X', ['a']),
+		new Rule('X', ['a', 'a']),
+		new Rule('X', ['a', 'a', 'a'])
+		]);
+var f = g.parse('aaab');
+
+var div = document.getElementById('forest');
+var tree = forest_to_html(f);
+tree.className = 'center';
+div.appendChild(tree);
+</script>
+
+
 <h2><a name="future">Future Work</a></h2>
 
-<p>I'm excited about finally getting this to work, so I'm writing this
-up and posting it right away.  But this is just the core parsing
-algorithm: I want to at <em>least</em> write a parse forest visualizer
-and set up a page with a demo grammar where you can enter text and see
-the resulting forest.</p>
-
-<p>And to be really usable at all it needs a means to enter grammars in
-a convenient notation, a way to choose a parse tree from the forest, and
-a way to attach actions to rules.  I hope to get to this soon, but
-realistically it might be a month or three before I get around to
-finishing all of it.</p>
+<p>I'm excited about finally getting this algorithm figured out and running, so
+I'm writing it up and posting it right away.  But to be really usable at all it
+needs a means to enter grammars in a convenient notation, a way to choose a
+parse tree from the forest, and a way to attach actions to rules.  I hope to
+get to this soon, but realistically it might be a month or three before I get
+around to finishing all of it.</p>
 
 </div>
 
