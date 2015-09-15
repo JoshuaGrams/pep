@@ -311,11 +311,9 @@ var g = new Grammar('S', [
 		new Rule('X', ['a', 'a', 'a'])
 		]);
 var f = g.parse('aaab');
-
-var div = document.getElementById('forest');
-var tree = forest_to_html(f);
-tree.className = 'center';
-div.appendChild(tree);
+var hf = forest_to_html(f);
+hf.className = 'center';
+document.getElementById('forest').appendChild(hf);
 </script>
 
 

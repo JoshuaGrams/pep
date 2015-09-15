@@ -1,50 +1,73 @@
-var forest_to_html;
+var forest_to_html, process_forest;
 (function(){
 	'use strict';
 
-	// -------------------------------------------------------------------
-	// Convert parse forest to nested HTML tables
-
-	forest_to_html = function forest_to_html(f) {
+	process_forest = function process_forest(f, fns) {
 		if(!f) return;
-
 		var result;
-		if(f.hasOwnProperty('next')) {  // Derivation list 
-			result = table();
-			while(f) {
-				var child = children_to_html(f);
-				if(child.nodeName.toLowerCase() !== 'tr') {
-					child = tr(td(child));
-				}
-				result.appendChild(child);
-				f = f.next;
-			}
-		} else if(f.tag.rule) {  // LR(0) item
-			result = children_to_html(f);
-		} else {                 // Symbol item
-			result = children_to_html(f);
-			if(result) {
-				if(result.nodeName.toLowerCase() !== 'tr') {
-					result = tr(td(result));
-				}
-				var tag = td(text(f.tag));
-				tag.colSpan = result.cells.length;
-				tag = table(tr(tag));
-				tag.appendChild(result);
-				result = tag;
-			} else result = text(f.tag);
+		if(f.hasOwnProperty('next')) {  // ambiguous derivation
+			result = [];
+			while(f) { result.push(process_children(f, fns));  f = f.next; }
+			result = fns.choices(result);
+		} else if(f.tag.rule) {         // intermediate node
+			result = process_children(f, fns);
+		} else {                        // complete derivation
+			result = process_children(f, fns);
+			if(result) result = fns.non_terminal(f.tag, result);
+			else result = fns.terminal(f.tag);
 		}
 		return result;
 	}
 
-	function children_to_html(f) {
-		var left = forest_to_html(f.left);
-		var right = forest_to_html(f.right);
+	function process_children(f, fns) {
+		var left = process_forest(f.left, fns);
+		var right = process_forest(f.right, fns);
 		if(left && right) {
-			if(left.nodeName.toLowerCase() !== 'tr') left = tr(td(left));
-			left.appendChild(td(right));
+			if(!(f.left && f.left.tag && f.left.tag.rule)) left = [left];
+			left.push(right);
 			return left;
-		} else return left || right;
+		} else if(left || right) return [left || right];
+	}
+
+
+	// -------------------------------------------------------------------
+	// Convert parse forest to nested HTML tables
+
+	function html_derivation(d) {
+		var row = tr();
+		for(var i=0; i<d.length; ++i) row.appendChild(td(d[i]));
+		return row;
+	}
+
+	function html_choices(choices) {
+		var html = table();
+		for(var i=0; i<choices.length; ++i) {
+			html.appendChild(tr(td(html_derivation(choices[i]))));
+		}
+		return html;
+	}
+
+	function html_terminal(name) { return text(name); }
+
+	function html_non_terminal(name, derivation) {
+		name = text(name);
+		if(derivation && derivation.length) {
+			var symbol = td(name);  symbol.colSpan = derivation.length;
+			var data = html_derivation(derivation);
+			var html = table(tr(symbol));
+			html.appendChild(data);
+			return html;
+		} else return symbol;
+	}
+
+	var html_fns = {
+		choices: html_choices,
+		terminal: html_terminal,
+		non_terminal: html_non_terminal
+	}
+
+	forest_to_html = function forest_to_html(f) {
+		return process_forest(f, html_fns);
 	}
 
 
