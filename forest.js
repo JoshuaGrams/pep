@@ -7,14 +7,17 @@ var forest_to_html, process_forest;
 		var result;
 		if(f.hasOwnProperty('next')) {  // ambiguous derivation
 			result = [];
-			while(f) { result.push(process_children(f, fns));  f = f.next; }
+			while(f) {
+				var d = fns.derivation(process_children(f, fns));
+				result.push(d);
+				f = f.next;
+			}
 			result = fns.choices(result);
 		} else if(f.tag.rule) {         // intermediate node
 			result = process_children(f, fns);
 		} else {                        // complete derivation
-			result = process_children(f, fns);
-			if(result) result = fns.non_terminal(f.tag, result);
-			else result = fns.terminal(f.tag);
+			var d = fns.derivation(process_children(f, fns));
+			result = fns.symbol(f.tag, d);
 		}
 		return result;
 	}
@@ -34,36 +37,35 @@ var forest_to_html, process_forest;
 	// Convert parse forest to nested HTML tables
 
 	function html_derivation(d) {
-		var row = tr();
-		for(var i=0; i<d.length; ++i) row.appendChild(td(d[i]));
-		return row;
+		if(d) {
+			var row = tr();
+			for(var i=0; i<d.length; ++i) row.appendChild(td(d[i]));
+			return row;
+		}
 	}
 
 	function html_choices(choices) {
 		var html = table();
 		for(var i=0; i<choices.length; ++i) {
-			html.appendChild(tr(td(html_derivation(choices[i]))));
+			html.appendChild(tr(td(choices[i])));
 		}
 		return html;
 	}
 
-	function html_terminal(name) { return text(name); }
-
-	function html_non_terminal(name, derivation) {
+	function html_symbol(name, derivation) {
 		name = text(name);
-		if(derivation && derivation.length) {
+		if(derivation) {
 			var symbol = td(name);  symbol.colSpan = derivation.length;
-			var data = html_derivation(derivation);
 			var html = table(tr(symbol));
-			html.appendChild(data);
+			html.appendChild(derivation);
 			return html;
-		} else return symbol;
+		} else return name;
 	}
 
 	var html_fns = {
 		choices: html_choices,
-		terminal: html_terminal,
-		non_terminal: html_non_terminal
+		derivation: html_derivation,
+		symbol: html_symbol
 	}
 
 	forest_to_html = function forest_to_html(f) {
