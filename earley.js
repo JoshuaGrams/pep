@@ -31,7 +31,7 @@ var Rule, Grammar;
 			for(var i=0; i<set.items.length; ++i) {
 				var item = set.items[i];
 				if(item.tag.nextSymbol) predict(set, item.tag.nextSymbol());
-				else complete(set, item);
+				else complete(item);
 			}
 		} while(set.items.length > len);  // cheesy nullable-rule handling
 		return set;
@@ -43,11 +43,11 @@ var Rule, Grammar;
 		return s2;
 	}
 
-	function complete(set, c) {
+	function complete(c) {
 		var items = c.start.items_waiting_for(c.tag);
 		if(items) for(var i=0; i<items.length; ++i) {
-			add_item(items[i].tag.advance(), items[i].start, c.end,
-					items[i], c);
+			var a = add_item(items[i].tag.advance(), items[i].start, c.end);
+			add_derivation(a, items[i], c);
 		}
 	}
 
@@ -101,7 +101,7 @@ var Rule, Grammar;
 		return this.start.position + '..' + this.end.position + ': ' + this.tag;
 	}
 
-	function add_item(tag, start, end, left, right) {
+	function add_item(tag, start, end) {
 		// Rules get promoted to LR(0) items with the dot at the left.
 		if(tag.symbol) tag = new LR0Item(tag, 0);
 
@@ -109,8 +109,7 @@ var Rule, Grammar;
 		// they will be combined with other derivations for that symbol.
 		if(tag.isComplete && tag.isComplete()) tag = tag.rule.symbol;
 
-		var item = find_item(tag, start, end) || new Item(tag, start, end);
-		add_derivation(item, left, right);
+		return find_item(tag, start, end) || new Item(tag, start, end);
 	}
 
 	function find_item(tag, start, end) {
@@ -141,7 +140,7 @@ var Rule, Grammar;
 
 		// remove trivial nodes on the left.
 		if(left && left.tag && left.tag.hasOwnProperty('dot')
-				&& left.tag.dot < 2) left = left.right;
+				&& left.tag.dot <= 1) left = left.right;
 
 		if(!(item.left || item.right)) set_derivation(item, left, right);
 		else if(item.right) add_second_derivation(item, left, right);
@@ -150,7 +149,7 @@ var Rule, Grammar;
 
 	function set_derivation(i, l, r) { i.left = l;  i.right = r; }
 
-	function same_derivation(i, l, r) { return i.left+''==l'' && i.right+''=r+''; }
+	function same_derivation(i, l, r) { return i.left+''==l+'' && i.right+''==r+''; }
 
 	function add_second_derivation(i, l, r) {
 		if(same_derivation(i, l, r)) {
@@ -161,7 +160,7 @@ var Rule, Grammar;
 	}
 
 	function add_another_derivation(i, l, r) {
-		var d = i.left;  while(d) if(same_derivation(d, l, r)) return;
+		var d=i;  while(d=d.next || d.left) if(same_derivation(d, l, r)) return;
 		i.left = new Derivation(l, r, i.left);
 	}
 
