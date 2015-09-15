@@ -2,34 +2,38 @@ var forest_to_html, process_forest;
 (function(){
 	'use strict';
 
+	function is_intermediate(f) { return f && f.tag && f.tag.rule; }
+	function is_ambiguous(f) { return f && f.hasOwnProperty('next'); }
+
 	process_forest = function process_forest(f, fns) {
 		if(!f) return;
 		var result;
-		if(f.hasOwnProperty('next')) {  // ambiguous derivation
+		if(is_ambiguous(f)) {
 			result = [];
 			while(f) {
-				var d = fns.derivation(process_children(f, fns));
-				result.push(d);
+				result.push(fns.derivation(collect_children(f, fns)));
 				f = f.next;
 			}
 			result = fns.choices(result);
-		} else if(f.tag.rule) {         // intermediate node
-			result = process_children(f, fns);
+		} else if(is_intermediate(f)) {
+			result = collect_children(f, fns);
 		} else {                        // complete derivation
-			var d = fns.derivation(process_children(f, fns));
+			var d = fns.derivation(collect_children(f, fns));
 			result = fns.symbol(f.tag, d);
 		}
 		return result;
 	}
 
-	function process_children(f, fns) {
+	function collect_children(f, fns) {
 		var left = process_forest(f.left, fns);
 		var right = process_forest(f.right, fns);
-		if(left && right) {
-			if(!(f.left && f.left.tag && f.left.tag.rule)) left = [left];
-			left.push(right);
-			return left;
-		} else if(left || right) return [left || right];
+
+		var result;
+		if(left) {
+			result = is_intermediate(f.left) ? left : [left];
+			if(right) result.push(right);
+		} else if(right) result = [right];
+		return result;
 	}
 
 
