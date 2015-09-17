@@ -1,14 +1,73 @@
-var forest_to_html, process_forest;
+var disambiguate, prioritized_tree;
+var process_forest, forest_to_html;
 (function(){
 	'use strict';
 
-	function is_intermediate(f) { return f && f.tag && f.tag.rule; }
-	function is_ambiguous(f) { return f && f.hasOwnProperty('next'); }
+
+	// -------------------------------------------------------------------
+	// Choose parse tree from forest by rule priority
+
+	function is_ambiguous(f) { return f && f.left && !f.right; }
+
+	disambiguate = function disambiguate(f, gt) {
+		if(f && is_ambiguous(f)) {
+			var best = f.left, d = f.left;
+			while(d = d.next) {
+				best = cmp(d, best, gt) > 0 ? d : best;
+			}
+			f.left = best.left;
+			f.right = best.right;
+			f.rule = best.rule;
+		}
+		// disambiguate child derivations
+		if(f.left) disambiguate(f.left, gt);
+		if(f.right) disambiguate(f.right, gt);
+		return f;
+	}
+
+	// So as a side effect, this needs to disambiguate the children
+	// of the chosen derivation.
+	function choose_derivation_for(f, gt) {
+		var best = f.left, d = f.left;
+		while(d = d.next) {
+			best = cmp(d, best, gt) > 0 ? d : best;
+		}
+		f.left = best.left;
+		f.right = best.right;
+		f.rule = best.rule;
+	}
+
+	function cmp(a, b, gt) {
+		if(!(a || b)) return 0;
+		else {
+			disambiguate(a, gt);
+			disambiguate(b, gt);
+			if(a.rule == b.rule) {
+				return cmp(a.left, b.left, gt)
+					|| cmp(a.right, b.right, gt);
+			} else if(gt(a.rule, b.rule)) return 1;
+			else return -1;
+		}
+	}
+
+	prioritized_tree = function prioritized_tree(f) {
+		return disambiguate(f, higher_priority);
+	}
+
+	function higher_priority(a, b) { return a.priority > b.priority; }
+
+
+
+	// -------------------------------------------------------------------
+	// Forest walker
+
+	function is_intermediate(f) { return f && f.tag && f.tag.symbol; }
+	function is_derivation_list(f) { return f && f.hasOwnProperty('next'); }
 
 	process_forest = function process_forest(f, fns) {
 		if(!f) return;
 		var result;
-		if(is_ambiguous(f)) {
+		if(is_derivation_list(f)) {
 			result = [];
 			while(f) {
 				result.push(fns.derivation(collect_children(f, fns)));

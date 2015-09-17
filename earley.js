@@ -8,8 +8,9 @@ var Rule, Grammar;
 		this.S = startSymbol;
 		this.rules = {};
 		for(var i=0; i<rules.length; ++i) {
+			instantiate_rule(rules[i], rules.length - i);
 			var sym = rules[i].symbol;
-			if(!this.rules.hasOwnProperty(sym)) this.rules[sym] = [];
+			this.rules[sym] = this.rules[sym] || [];
 			this.rules[sym].push(rules[i]);
 		}
 	}
@@ -20,17 +21,13 @@ var Rule, Grammar;
 		return find_item(this.S, s0, sN);
 	}
 
-	Grammar.prototype.rules_for = function(sym) {
-		if(this.rules.hasOwnProperty(sym)) return this.rules[sym];
-	}
-
 	function parse_symbol(set, sym) { return process(scan(set, sym)); }
 
 	function process(set) {
 		do { var len = set.items.length;
 			for(var i=0; i<set.items.length; ++i) {
 				var item = set.items[i];
-				if(item.tag.nextSymbol) predict(set, item.tag.nextSymbol());
+				if(item.tag.nextSymbol) predict(set, item.tag.nextSymbol);
 				else complete(item);
 			}
 		} while(set.items.length > len);  // cheesy nullable-rule handling
@@ -44,17 +41,22 @@ var Rule, Grammar;
 	}
 
 	function complete(c) {
-		var items = c.start.items_waiting_for(c.tag);
+		var items = c.start.wants[c.tag];
 		if(items) for(var i=0; i<items.length; ++i) {
-			var a = add_item(items[i].tag.advance(), items[i].start, c.end);
-			add_derivation(a, items[i], c);
+			var item = items[i], tag = item.tag;
+			add_derivation(add_item(tag.advance, item.start, c.end),
+					item, c, item.rule);
 		}
 	}
 
 	function predict(set, sym) {
-		var rules = set.grammar.rules_for(sym);
+		var rules = set.grammar.rules[sym];
 		if(rules) for(var i=0; i<rules.length; ++i) {
-			add_item(rules[i], set, set);
+			var item = add_item(rules[i].advance, set, set, rules[i]);
+			if(!item.tag.production) {
+				var empty = add_item('', set, set);
+				add_derivation(item, undefined, empty, item.rule);
+			}
 		}
 		return set;
 	}
@@ -71,27 +73,24 @@ var Rule, Grammar;
 		this.wants = {};  // incomplete items by next symbol
 	}
 
-	Set.prototype.items_waiting_for = function(sym) {
-		if(this.wants.hasOwnProperty(sym+'')) return this.wants[sym];
-	}
-
 
 	// -------------------------------------------------------------------
 	// An Item represents a step in the process of matching a piece of the
 	// input: an input symbol, a complete derivation for a symbol, or a
 	// partial match for a rule.
 
-	function Item(tag, start, end) {
+	function Item(tag, start, end, rule) {
 		this.tag = tag;
 		this.start = start;
 		this.end = end;
+		this.rule = rule;
 
 		end.items.push(this);
 
 		if(!end.idx.hasOwnProperty(tag)) end.idx[tag] = {};
 		end.idx[tag][start.position] = this;
 
-		var sym; if(sym = tag.nextSymbol && tag.nextSymbol()) {
+		var sym; if(sym = tag.nextSymbol) {
 			if(!end.wants.hasOwnProperty(sym)) end.wants[sym] = [];
 			end.wants[sym].push(this);
 		}
@@ -101,21 +100,12 @@ var Rule, Grammar;
 		return this.start.position + '..' + this.end.position + ': ' + this.tag;
 	}
 
-	function add_item(tag, start, end) {
-		// Rules get promoted to LR(0) items with the dot at the left.
-		if(tag.symbol) tag = new LR0Item(tag, 0);
-
-		// Completed LR(0) items are filed under the rule's symbol so that
-		// they will be combined with other derivations for that symbol.
-		if(tag.isComplete && tag.isComplete()) tag = tag.rule.symbol;
-
-		return find_item(tag, start, end) || new Item(tag, start, end);
+	function add_item(tag, start, end, rule) {
+		return find_item(tag, start, end) || new Item(tag, start, end, rule);
 	}
 
 	function find_item(tag, start, end) {
-		if(end.idx.hasOwnProperty(tag)
-				&& end.idx[tag].hasOwnProperty(start.position))
-			return end.idx[tag][start.position];
+		return end.idx.hasOwnProperty(tag) && end.idx[tag][start.position];
 	}
 
 
@@ -129,39 +119,41 @@ var Rule, Grammar;
 	// - deriv/null: multiple derivations
 
 
-	function Derivation(left, right, next) {
+	function Derivation(left, right, next, rule) {
 		this.left = left;
 		this.right = right;
 		this.next = next;
+		this.rule = rule;
 	}
 
-	function add_derivation(item, left, right) {
+	function add_derivation(item, left, right, rule) {
 		if(!(left || right)) return;
 
-		// remove trivial nodes on the left.
-		if(left && left.tag && left.tag.hasOwnProperty('dot')
-				&& left.tag.dot <= 1) left = left.right;
+		// remove trivial nodes on left
+		if(left && left.tag && left.tag.production && left.tag.dot <= 1) {
+			if(left.tag.dot <= 1) left = left.right;
+		}
 
-		if(!(item.left || item.right)) set_derivation(item, left, right);
-		else if(item.right) add_second_derivation(item, left, right);
-		else add_another_derivation(item, left, right);
+		if(!(item.left || item.right)) set_derivation(item, left, right, rule);
+		else if(item.right) add_second_derivation(item, left, right, rule);
+		else add_another_derivation(item, left, right, rule);
 	}
 
-	function set_derivation(i, l, r) { i.left = l;  i.right = r; }
+	function set_derivation(i, l, r, rule) { i.left = l;  i.right = r;  i.rule = rule; }
 
 	function same_derivation(i, l, r) { return i.left+''==l+'' && i.right+''==r+''; }
 
-	function add_second_derivation(i, l, r) {
+	function add_second_derivation(i, l, r, rule) {
 		if(!same_derivation(i, l, r)) {
-			var old = new Derivation(i.left, i.right, null);
-			i.left = new Derivation(l, r, old);
-			delete(i.right);
+			var old = new Derivation(i.left, i.right, null, i.rule);
+			i.left = new Derivation(l, r, old, rule);
+			delete(i.right);  delete(i.rule);
 		}
 	}
 
-	function add_another_derivation(i, l, r) {
+	function add_another_derivation(i, l, r, rule) {
 		var d=i;  while(d=d.next || d.left) if(same_derivation(d, l, r)) return;
-		i.left = new Derivation(l, r, i.left);
+		i.left = new Derivation(l, r, i.left, rule);
 	}
 
 
@@ -172,39 +164,25 @@ var Rule, Grammar;
 		this.production = production;
 	}
 
-	Rule.prototype.toString = function(dot) {
-		var s = this.symbol + ' ->';
+	function instantiate_rule(rule, priority) {
+		rule.priority = priority;
+		var n = rule.production.length;
+		for(var i=0; i<n; ++i) {
+			rule.advance = new Rule(rule.symbol, rule.production);
+			rule = rule.advance;
+			rule.priority = priority;
+			rule.dot = i;
+			rule.nextSymbol = rule.production[i];
+		}
+		rule.advance = rule.symbol;
+	}
+
+	Rule.prototype.toString = function() {
+		var s = this.symbol + ' -> ' + (this.dot===0 ? ' * ' : '');
 		for(var i=0; i<this.production.length; ++i) {
-			s += (i===dot ? ' * ' : ' ') + this.production[i];
+			s += this.production[i] + (i+1===this.dot ? ' * ' : ' ');
 		}
 		return s;
-	}
-
-	// An LR(0) item represents a rule which has been partially matched.
-	// The "dot" indicates how many of its symbols have been recognized.
-	function LR0Item(rule, nParsed) {
-		this.rule = rule;
-		this.dot = nParsed;  // [0 .. production.length]
-	}
-
-	LR0Item.prototype.toString = function() {
-		return this.rule.toString(this.dot);
-	}
-
-	LR0Item.prototype.isComplete = function() {
-		return this.dot >= this.rule.production.length;
-	}
-
-	LR0Item.prototype.advance = function() {
-		if(!this.advanced) {
-			if(this.isComplete()) this.advanced = this;
-			else this.advanced = new LR0Item(this.rule, 1 + this.dot);
-		}
-		return this.advanced;
-	}
-
-	LR0Item.prototype.nextSymbol = function() {
-		if(!this.isComplete()) return this.rule.production[this.dot];
 	}
 
 })();

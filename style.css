@@ -34,7 +34,7 @@ pre {
 	border-radius: 1ex;
 }
 
-td { border: 1px solid black;  padding: 0.5ex;  text-align: center; }
+td { border: 1px solid black;  padding: 0.5ex;  text-align: center;  vertical-align: top; }
 th { border: 1px solid black;  padding: 0.5ex;  background: #aa8; }
 table { border-collapse: collapse; }
 

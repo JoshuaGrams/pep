@@ -4,6 +4,7 @@
     <meta charset="utf-8"/>
     <title>A Pint-sized Earley Parser</title>
     <script src="earley.js"></script>
+    <script src="forest.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -72,7 +73,7 @@ symbol: this is the only way that we support alternatives in rules.</p>
 Grammar : {
     String start,
     Dictionary([Rule]) rules
-        // { "S": [S -&gt; X Y, S -&gt; A A b], ...}
+        // { "S": [S &#8594; X Y, S &#8594; A A b], ...}
 }</code></pre>
 
 <p>An <strong>LR(0) item</strong> represents a partially matched rule
@@ -323,9 +324,9 @@ process_forest(f, fns) =
         result = fns.symbol(f.tag, d)
     result</code></pre>
 
-<p>The helper function pretty much just collects the children into an
-array, except that if the left child is an intermediate node, it uses
-that array directly rather than creating a new level of nesting.</p>
+<p>The helper function pretty much just puts the children into an array,
+except that if the left child is an intermediate node, it uses that
+array directly rather than creating a new level of nesting.</p>
 
 <code><pre>collect_children(f, fns) =
     left = process_forest(f.left, fns)
@@ -345,47 +346,138 @@ tables.</p>
 <pre><code>html_derivation(d) = tr(map(td, d))
 html_choices(c) = table(map(tr . td, c))
 html_symbol(name, derivation) =
-	if(derivation)
-		symbol = tr(td(name, colSpan = derivation.length))
-		table(symbol, derivation)
-	else name</code></pre>
+    if(derivation)
+        symbol = tr(td(name, colSpan = derivation.length))
+        table(symbol, derivation)
+    else name</code></pre>
 
 <p>And here it is in action.</p>
 
 <pre><code>g = Grammar('S',
-    S -&gt; X X b
-    X -&gt;
-    X -&gt; a
-    X -&gt; a a
-    X -&gt; a a a)
+    S &#8594; a X X c
+    X &#8594; X b
+    X &#8594;
+)
 
-parse(g, 'aaab')</code></pre>
+parse(g, 'abbc')</code></pre>
 
-<div id="forest"></div>
-<script src="forest.js"></script>
+<div id="forest-demo"></div>
 <script>
 var g = new Grammar('S', [
-        new Rule('S', ['X', 'X', 'b']),
-        new Rule('X', []),
-        new Rule('X', ['a']),
-        new Rule('X', ['a', 'a']),
-        new Rule('X', ['a', 'a', 'a'])
+        new Rule('S', ['a', 'X', 'X', 'c']),
+        new Rule('X', ['X', 'b']),
+        new Rule('X', [])
         ]);
-var f = g.parse('aaab');
+var f = g.parse('abbc');
 var hf = forest_to_html(f);
 hf.className = 'center';
-document.getElementById('forest').appendChild(hf);
+document.getElementById('forest-demo').appendChild(hf);
 </script>
+
+<p>It's also fairly easy to walk the forest and reduce it to a single
+tree.  I'm using rule priorities (earlier rules have higher priority) to
+decide.  This gives you the nice ordered choice behavior of PEGs without
+the <a href="http://www.romanredz.se/papers/FI2008.pdf">strange
+behaviors</a> PEGs can exhibit (e.g. &ldquo;<span class="no-wrap">S
+&#8594; a S a / a a</span>&rdquo; matching only strings of a's whose length is
+a power of two, instead of all even length ones).</p>
+
+
+<p>I think this ordered choice behavior gives you enough control for
+most practical use.  For instance, applying it to our example above
+gives you longest-match behavior, while reversing the order of the rules
+for X would give you shortest-match behavior instead.</p>
+
+<div id="tree-demo"></div>
+<script>
+var ht = forest_to_html(prioritized_tree(f));
+ht.className = 'center';
+document.getElementById('tree-demo').appendChild(ht);
+</script>
+
+<p>To implement this, we need to modify several things.  Obviously we
+need to modify our grammar initialization code to assign priority
+numbers.</p>
+
+<p>We need to make sure we can tell which rule an item derives from.
+This isn't directly accessible when we have a complete item: they just
+have the symbol.  You could probably look back to the left to find an
+LR(0) item, or look it up in the grammar for null derivations.  But I
+have chosen to add a rule reference to each item and derivation, and to
+update <code>add_second_derivation</code> so that it moves the rule from
+the (now ambiguous) item to the derivation.</p>
+
+<p>Then we simply walk the tree, choosing one option for each ambiguous
+derivation.</p>
+
+<pre><code>disambiguate(f, gt) =
+    if(f &amp;&amp; is_ambiguous(f))
+        best = f.left,  d = f.left
+        while(d = d.next)
+            best = (cmp(d, best, gt) &gt; 0) ? d : best
+        f = best
+    // handle our children's derivations
+    if(f.left) disambiguate(f.left, choose)
+    if(f.right) disambiguate(f.right, choose)
+
+is_ambiguous(f) = f &amp;&amp; f.left &amp;&amp; !f.right</code></pre>
+
+<p>The tricky stuff is in the actual comparison function.  We
+make the decision based on the rule.  Only if the rules are equal do we
+need to recurse deeper to make a decision.  So we know that we are only
+ever comparing two items of the same type (partial, complete, input
+symbol).  So:</p>
+
+<ul>
+
+    <li>If they're null, then they're equal</li>
+
+    <li>Otherwise we disambiguate them so we're dealing with single
+    parse trees on each side. Then:</li>
+
+    <ul>
+
+        <li>If their rules are equal, then they're equal (in JavaScript,
+        this handles the case of input symbols: their rules are both
+        <code>undefined</code>, so they're equal.</li>
+
+        <li>If their rules are not equal, we pass them to a user-defined
+        rule comparison function which tells us which one is
+        preferred.</li>
+
+    </ul>
+
+</ul>
+
+<pre><code>cmp(a, b, gt) =
+    if(!(a || b)) result = 0
+    else
+        disambiguate(a, gt)
+        disambiguate(b, gt)
+        if(a.rule == b.rule)
+            result = cmp(a.left, b.left, gt)
+                || cmp(a.right, b.right, gt)
+        else if(gt(a.rule, b.rule)) result = 1
+        else result = -1
+    result</code></pre>
+
+
+<p>Then disambiguating by priority is trivial.</p>
+
+<pre><code>higher_priority(a, b) = a.priority &gt; b.priority
+
+prioritized_tree(f) = disambiguate(f, higher_priority)</code></pre>
+
 
 
 <h2><a name="future">Future Work</a></h2>
 
-<p>I'm excited about finally getting this algorithm figured out and running, so
-I'm writing it up and posting it right away.  But to be at all "finished" it
-needs a means to enter grammars in a convenient notation, a way to choose a
-parse tree from the forest, and a way to attach actions to rules.  I hope to
-get to this soon, but realistically it might be a month or three before I get
-around to finishing all of it.</p>
+<p>I'm excited about finally getting this algorithm figured out and
+running, so I'm writing it up and posting it right away.  But to be at
+all "finished" it needs a means to enter grammars in a convenient
+notation and a way to attach actions to rules.  I hope to get to this
+soon, but realistically it might be a month or three before I get around
+to finishing all of it.</p>
 
 </div>
 
