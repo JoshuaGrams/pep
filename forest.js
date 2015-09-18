@@ -1,5 +1,5 @@
 var disambiguate, prioritized_tree;
-var process_forest, forest_to_html;
+var process_forest, forest_to_html, evaluate_forest;
 (function(){
 	'use strict';
 
@@ -23,18 +23,6 @@ var process_forest, forest_to_html;
 		if(f.left) disambiguate(f.left, gt);
 		if(f.right) disambiguate(f.right, gt);
 		return f;
-	}
-
-	// So as a side effect, this needs to disambiguate the children
-	// of the chosen derivation.
-	function choose_derivation_for(f, gt) {
-		var best = f.left, d = f.left;
-		while(d = d.next) {
-			best = cmp(d, best, gt) > 0 ? d : best;
-		}
-		f.left = best.left;
-		f.right = best.right;
-		f.rule = best.rule;
 	}
 
 	function cmp(a, b, gt) {
@@ -78,7 +66,7 @@ var process_forest, forest_to_html;
 			result = collect_children(f, fns);
 		} else {                        // complete derivation
 			var d = fns.derivation(collect_children(f, fns));
-			result = fns.symbol(f.tag, d);
+			result = fns.symbol(f, d);
 		}
 		return result;
 	}
@@ -93,6 +81,21 @@ var process_forest, forest_to_html;
 			if(right) result.push(right);
 		} else if(right) result = [right];
 		return result;
+	}
+
+
+
+	// -------------------------------------------------------------------
+	// Evaluation:
+
+	var expr_fns = {
+		choices: function(c) { return c; },
+		derivation: function(d) { return d; },
+		symbol: function(i, d) { return i.rule ? i.rule.action(d) : (d ? d : i.tag); }
+	};
+
+	evaluate_forest = function evaluate_forest(f) {
+		return process_forest(prioritized_tree(f), expr_fns);
 	}
 
 
@@ -115,14 +118,14 @@ var process_forest, forest_to_html;
 		return html;
 	}
 
-	function html_symbol(name, derivation) {
-		name = text(name);
+	function html_symbol(item, derivation) {
+		item = text(item.hasOwnProperty('tag') ? item.tag : item);
 		if(derivation) {
-			var symbol = td(name);  symbol.colSpan = derivation.length;
+			var symbol = td(item);  symbol.colSpan = derivation.length;
 			var html = table(tr(symbol));
 			html.appendChild(derivation);
 			return html;
-		} else return name;
+		} else return item;
 	}
 
 	var html_fns = {
@@ -134,6 +137,8 @@ var process_forest, forest_to_html;
 	forest_to_html = function forest_to_html(f) {
 		return process_forest(f, html_fns);
 	}
+
+})();
 
 
 	// -------------------------------------------------------------------
@@ -148,5 +153,3 @@ var process_forest, forest_to_html;
 	function tr(node) { return elt('tr', node); }
 	function td(node) { return elt('td', node); }
 	function text(str) { return document.createTextNode(str); }
-
-})();

@@ -36,7 +36,7 @@ var Rule, Grammar;
 
 	function scan(s1, sym) {
 		var s2 = new Set(s1.grammar, s1.position + 1);
-		add_item(sym, s1, s2);
+		var item = add_item(sym, s1, s2);
 		return s2;
 	}
 
@@ -44,7 +44,7 @@ var Rule, Grammar;
 		var items = c.start.wants[c.tag];
 		if(items) for(var i=0; i<items.length; ++i) {
 			var item = items[i], tag = item.tag;
-			add_derivation(add_item(tag.advance, item.start, c.end),
+			add_derivation(add_item(tag.advance, item.start, c.end, item.rule),
 					item, c, item.rule);
 		}
 	}
@@ -159,9 +159,10 @@ var Rule, Grammar;
 
 	// -------------------------------------------------------------------
 
-	Rule = function Rule(symbol, production) {
+	Rule = function Rule(symbol, production, action) {
 		this.symbol = symbol + '';
 		this.production = production;
+		this.action = action;
 	}
 
 	function instantiate_rule(rule, priority) {
@@ -178,9 +179,9 @@ var Rule, Grammar;
 	}
 
 	Rule.prototype.toString = function() {
-		var s = this.symbol + ' -> ' + (this.dot===0 ? ' * ' : '');
+		var s = this.symbol + ' -> ' + (this.dot===0 ? '• ' : '');
 		for(var i=0; i<this.production.length; ++i) {
-			s += this.production[i] + (i+1===this.dot ? ' * ' : ' ');
+			s += this.production[i] + (i+1===this.dot ? ' • ' : ' ');
 		}
 		return s;
 	}

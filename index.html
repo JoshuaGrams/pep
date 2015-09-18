@@ -43,6 +43,7 @@ project</a> if you prefer that.</p>
     </ul>
     <li><a href="#parser">The Parser</a></li>
     <li><a href="#forest">Walking the Forest</a></li>
+    <li><a href="#actions">Adding Parse Actions</a></li>
     <li><a href="#future">Future Work</a></li>
 </ul>
 
@@ -73,12 +74,12 @@ symbol: this is the only way that we support alternatives in rules.</p>
 Grammar : {
     String start,
     Dictionary([Rule]) rules
-        // { "S": [S &#8594; X Y, S &#8594; A A b], ...}
+        // { "S": [S ::= X Y, S ::= A A b], ...}
 }</code></pre>
 
 <p>An <strong>LR(0) item</strong> represents a partially matched rule
 and is generally written with a dot showing the end of the match, so
-<code class="no-wrap">S &#8594; Expression "+" &bull; Term</code> would
+<code class="no-wrap">S ::= Expression "+" &bull; Term</code> would
 indicate that an <code>Expression</code> and <code>"+"</code> have been
 matched.</p>
 
@@ -354,9 +355,9 @@ html_symbol(name, derivation) =
 <p>And here it is in action.</p>
 
 <pre><code>g = Grammar('S',
-    S &#8594; a X X c
-    X &#8594; X b
-    X &#8594;
+    S ::= a X X c
+    X ::= X b
+    X ::=
 )
 
 parse(g, 'abbc')</code></pre>
@@ -379,7 +380,7 @@ tree.  I'm using rule priorities (earlier rules have higher priority) to
 decide.  This gives you the nice ordered choice behavior of PEGs without
 the <a href="http://www.romanredz.se/papers/FI2008.pdf">strange
 behaviors</a> PEGs can exhibit (e.g. &ldquo;<span class="no-wrap">S
-&#8594; a S a / a a</span>&rdquo; matching only strings of a's whose length is
+::= a S a / a a</span>&rdquo; matching only strings of a's whose length is
 a power of two, instead of all even length ones).</p>
 
 
@@ -461,7 +462,6 @@ symbol).  So:</p>
         else result = -1
     result</code></pre>
 
-
 <p>Then disambiguating by priority is trivial.</p>
 
 <pre><code>higher_priority(a, b) = a.priority &gt; b.priority
@@ -470,14 +470,60 @@ prioritized_tree(f) = disambiguate(f, higher_priority)</code></pre>
 
 
 
+<h2><a name="actions">Adding Parse Actions</a></h2>
+
+<p>Then adding parse actions turns out to be trivial: just add an action
+to each rule and call them in the tree walker.</p>
+
+<pre><code>eval_fns = {
+    choice: error,
+    derivation: function(d) = d,
+    symbol: function(item, derivation) =
+        if(item.rule) item.rule.action(derivation)
+        else if(derivation) derivation
+        else item.tag  // symbol, no derivation, just return it.
+}</code></pre>
+
+<p>Let's try it.</p>
+
+<p class="note">(Note the way the priority is "backwards" due to the
+particular way in which the grammar is ambiguous...)</p>
+
+<pre><code>expr = new Grammar('E',
+    E ::= E + E &#8594; d[0] + d[2]
+    E ::= E * E &#8594; d[0] * d[2]
+    E ::= 2 &#8594; 2
+    E ::= 3 &#8594; 3
+    E ::= 5 &#8594; 5
+    E ::= 7 &#8594; 7
+
+tree = disambiguate(parse(expr, '2*3+5*7'))
+process_forest(tree, eval_fns)</code></pre>
+
+<table class="center"><tr id="action-demo"></tr></table>
+<script>
+var list = document.getElementById('action-demo');
+function log(msg) { list.appendChild(td(text(msg))); }
+var expr = new Grammar('E', [
+    new Rule('E', ['E', '+', 'E'], function(d) { log('adding ' + d[0] + ' and ' + d[2]); return d[0] + d[2]; }),
+    new Rule('E', ['E', '*', 'E'], function(d) {  log('multiplying ' + d[0] + ' and ' + d[2]);return d[0] * d[2]; }),
+    new Rule('E', ['2'], function(d) { return 2; }),
+    new Rule('E', ['3'], function(d) { return 3; }),
+    new Rule('E', ['5'], function(d) { return 5; }),
+    new Rule('E', ['7'], function(d) { return 7; })
+    ]);
+var ef = expr.parse('2*3+5*7');
+log(evaluate_forest(ef));
+</script>
+
+
 <h2><a name="future">Future Work</a></h2>
 
 <p>I'm excited about finally getting this algorithm figured out and
-running, so I'm writing it up and posting it right away.  But to be at
-all "finished" it needs a means to enter grammars in a convenient
-notation and a way to attach actions to rules.  I hope to get to this
-soon, but realistically it might be a month or three before I get around
-to finishing all of it.</p>
+running, so I'm writing it up and posting it right away.  Since I first
+posted it I've been working on it quite a bit.  I think that to be
+useful it mostly just needs a means to enter grammars in a convenient
+notation.  If that goes well, it should only be another few days.</p>
 
 </div>
 
