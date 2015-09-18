@@ -486,8 +486,11 @@ to each rule and call them in the tree walker.</p>
 
 <p>Let's try it.</p>
 
-<p class="note">(Note the way the priority is "backwards" due to the
-particular way in which the grammar is ambiguous...)</p>
+<p class="note">(Note the way the priority is "backwards": since all the
+rules are going to be part of the parse, the priority just chooses which
+ones are closer to the top of the tree.  But operator precedence works
+the other way: higher precedence operators bind more tightly to the
+leaves.)</p>
 
 <pre><code>expr = new Grammar('E',
     E ::= E + E &#8594; d[0] + d[2]
