@@ -505,15 +505,20 @@ process_forest(tree, eval_fns)</code></pre>
 
 <table class="center"><tr id="action-demo"></tr></table>
 <script>
+function is_digit(d) { return d >= '0' && d <= '9'; }
 var list = document.getElementById('action-demo');
 function log(msg) { list.appendChild(td(text(msg))); }
 var expr = new Grammar('E', [
-    new Rule('E', ['E', '+', 'E'], function(d) { log('adding ' + d[0] + ' and ' + d[2]); return d[0] + d[2]; }),
-    new Rule('E', ['E', '*', 'E'], function(d) {  log('multiplying ' + d[0] + ' and ' + d[2]);return d[0] * d[2]; }),
-    new Rule('E', ['2'], function(d) { return 2; }),
-    new Rule('E', ['3'], function(d) { return 3; }),
-    new Rule('E', ['5'], function(d) { return 5; }),
-    new Rule('E', ['7'], function(d) { return 7; })
+    new Rule('E', ['E', '+', 'E'], function(d) {
+        log('adding ' + d[0] + ' and ' + d[2]);
+        return d[0] + d[2];
+        }),
+    new Rule('E', ['E', '*', 'E'], function(d) {
+        log('multiplying ' + d[0] + ' and ' + d[2]);
+        return d[0] * d[2];
+        }),
+    new Rule('E', ['digit'], function(d) { return d[0].charCodeAt(0) - '0'.charCodeAt(0); },
+        is_digit)
     ]);
 var ef = expr.parse('2*3+5*7');
 log(evaluate_forest(ef));

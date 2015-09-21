@@ -47,6 +47,16 @@ var Rule, Grammar;
 			add_derivation(add_item(tag.advance, item.start, c.end, item.rule),
 					item, c, item.rule);
 		}
+
+		items = c.start.wants_many;
+		if(items) for(var i=0; i<items.length; ++i) {
+			var item = items[i], tag = item.tag;
+			// rule can get deleted by add_second_derivation
+			if(item.rule.wants_sym(c.tag)) {
+				add_derivation(add_item(tag.advance, item.start, c.end, item.rule),
+						item, c, item.rule);
+			}
+		}
 	}
 
 	function predict(set, sym) {
@@ -71,6 +81,7 @@ var Rule, Grammar;
 		this.idx = {};    // all items by tag and start for uniqueness
 		this.items = [];  // items for iteration/processing
 		this.wants = {};  // incomplete items by next symbol
+		this.wants_many = [];  // incomplete items matching char classes
 	}
 
 
@@ -90,10 +101,12 @@ var Rule, Grammar;
 		if(!end.idx.hasOwnProperty(tag)) end.idx[tag] = {};
 		end.idx[tag][start.position] = this;
 
-		var sym; if(sym = tag.nextSymbol) {
+		var sym; if(sym = tag.nextSymbol) {  // incomplete
 			if(!end.wants.hasOwnProperty(sym)) end.wants[sym] = [];
 			end.wants[sym].push(this);
+			if(rule.wants_sym) end.wants_many.push(this);
 		}
+
 	}
 
 	Item.prototype.toString = function() {
@@ -159,10 +172,11 @@ var Rule, Grammar;
 
 	// -------------------------------------------------------------------
 
-	Rule = function Rule(symbol, production, action) {
+	Rule = function Rule(symbol, production, action, wants_sym) {
 		this.symbol = symbol + '';
 		this.production = production;
 		this.action = action;
+		if(wants_sym) this.wants_sym = wants_sym;
 	}
 
 	function instantiate_rule(rule, priority) {
