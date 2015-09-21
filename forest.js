@@ -10,7 +10,7 @@ var process_forest, forest_to_html, evaluate_forest;
 	function is_ambiguous(f) { return f && f.left && !f.right; }
 
 	disambiguate = function disambiguate(f, gt) {
-		if(f && is_ambiguous(f)) {
+		if(is_ambiguous(f)) {
 			var best = f.left, d = f.left;
 			while(d = d.next) {
 				best = cmp(d, best, gt) > 0 ? d : best;
