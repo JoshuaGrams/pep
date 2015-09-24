@@ -26,6 +26,27 @@ var Rule, Grammar;
 (function(){
 	'use strict';
 
+	function foldl_string(str, fn, r0) {
+		for(var i=0; i<str.length; ++i) {
+			var ch = str.charAt(i), cp = str.charCodeAt(i);
+			if(cp >= 0xD800 && cp <= 0xDBFF) {
+				var low = str.charCodeAt(i+1);
+				if(low >= 0xDC00 && low <= 0xDFFF) {
+					ch += str.charAt(++i);
+				}
+			}
+			r0 = fn(r0, ch);
+		}
+		return r0;
+	}
+
+	function foldl(seq, fn, r0) {
+		if(typeof seq === "string"
+			|| Object.prototype.toString.call(seq) === "[object String]") {
+			return foldl_string(seq, fn, r0);
+		} else return Array.prototype.reduce.call(seq, fn, r0);
+	}
+
 	Grammar = function Grammar(startSymbol, rules) {
 		this.S = startSymbol;
 		this.rules = {};
@@ -39,7 +60,7 @@ var Rule, Grammar;
 
 	Grammar.prototype.parse = function earleyParse(input) {
 		var s0 = process(predict(new Set(this, 0), this.S));
-		var sN = Array.prototype.reduce.call(input, parse_symbol, s0);
+		var sN = foldl(input, parse_symbol, s0);
 		return find_item(this.S, s0, sN);
 	}
 
