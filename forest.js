@@ -113,9 +113,13 @@ var process_forest, forest_to_html, evaluate_forest;
 	// Evaluation:
 
 	var expr_fns = {
-		choices: function(c) { return c; },
+		choices: function(c) { throw "Can't evaluate ambiguous parse."; },
 		derivation: function(d) { return d; },
-		symbol: function(i, d) { return i.rule ? i.rule.action(d) : (d ? d : i.tag); }
+		symbol: function(i, d) {
+			return i.rule ?
+				(i.rule.action ? i.rule.action(d) : d[0])
+				: (d ? d : i.tag);
+		}
 	};
 
 	evaluate_forest = function evaluate_forest(f) {
