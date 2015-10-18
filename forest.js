@@ -102,7 +102,7 @@ var process_forest, forest_to_html, evaluate_forest;
 		var result;
 		if(left !== undefined) {
 			result = is_intermediate(f.left) ? left : [left];
-			if(right) result.push(right);
+			if(right !== undefined) result.push(right);
 		} else if(right !== undefined) result = [right];
 		return result;
 	}
