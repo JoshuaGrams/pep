@@ -100,10 +100,10 @@ var process_forest, forest_to_html, evaluate_forest;
 		var right = process_forest(f.right, fns);
 
 		var result;
-		if(left) {
+		if(left !== undefined) {
 			result = is_intermediate(f.left) ? left : [left];
 			if(right) result.push(right);
-		} else if(right) result = [right];
+		} else if(right !== undefined) result = [right];
 		return result;
 	}
 

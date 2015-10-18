@@ -29,11 +29,11 @@ being fairly concise: for more information try Loup Vaillant-David's <a
 href="http://loup-vaillant.fr/tutorials/earley-parsing/">Earley Parsing
 Explained</a> which goes into far more detail.</p>
 
-<p>This is annotated pseudocode.  I was going to annotate the
-JavaScript, but JavaScript has a lot of "noise", so I reduced it to
-pseudocode for readability.  The source is available at the <a
+<p>This is annotated pseudocode for compactness and as an attempt at
+language independence.  If you want to look at real code, the JavaScript
+source is available at the <a
 href="https://github.com/JoshuaGrams/pep">git repository for this
-project</a> if you prefer that.</p>
+project</a>.</p>
 
 <ul>
     <li><a href="#recognizer">The Recognizer</a></li>
@@ -43,6 +43,7 @@ project</a> if you prefer that.</p>
     </ul>
     <li><a href="#parser">The Parser</a></li>
     <li><a href="#forest">Walking the Forest</a></li>
+	<li><a href="#tree">Choosing a Parse Tree</a></li>
     <li><a href="#actions">Adding Parse Actions</a></li>
     <li><a href="#future">Future Work</a></li>
 </ul>
@@ -304,7 +305,7 @@ functions to process a derivation (array of derivations for each
 symbol), a set of choices (array of derivations), and a completed symbol
 (with its derivation).</p>
 
-<pre><code>Walker : {
+<pre><code>WalkerFns : {
     Function(Array) derivation,
     Function(Array) choices,
     Function(Symbol, Array) symbol
@@ -375,6 +376,9 @@ hf.className = 'center';
 document.getElementById('forest-demo').appendChild(hf);
 </script>
 
+
+<h2><a name="tree">Choosing a Parse Tree</a></h2>
+
 <p>It's also fairly easy to walk the forest and reduce it to a single
 tree.  I'm using rule priorities (earlier rules have higher priority) to
 decide.  This gives you the nice ordered choice behavior of PEGs without
@@ -382,7 +386,6 @@ the <a href="http://www.romanredz.se/papers/FI2008.pdf">strange
 behaviors</a> PEGs can exhibit (e.g. &ldquo;<span class="no-wrap">S
 ::= a S a / a a</span>&rdquo; matching only strings of a's whose length is
 a power of two, instead of all even length ones).</p>
-
 
 <p>I think this ordered choice behavior gives you enough control for
 most practical use.  For instance, applying it to our example above
@@ -459,7 +462,7 @@ symbol).  So:</p>
             result = cmp(a.left, b.left, gt)
                 || cmp(a.right, b.right, gt)
         else if(gt(a.rule, b.rule)) result = 1
-        else result = -1
+        else result = -1  // must be less - we know they're not equal
     result</code></pre>
 
 <p>Then disambiguating by priority is trivial.</p>
@@ -481,7 +484,7 @@ to each rule and call them in the tree walker.</p>
     symbol: function(item, derivation) =
         if(item.rule) item.rule.action(derivation)
         else if(derivation) derivation
-        else item.tag  // symbol, no derivation, just return it.
+        else item.tag  // input symbol; just return it.
 }</code></pre>
 
 <p>Let's try it.</p>
@@ -531,7 +534,9 @@ log(evaluate_forest(ef));
 running, so I'm writing it up and posting it right away.  Since I first
 posted it I've been working on it quite a bit.  I think that to be
 useful it mostly just needs a means to enter grammars in a convenient
-notation.  If that goes well, it should only be another few days.</p>
+notation.  I got bogged down deciding how far to go with making BNF
+syntax, so I've set it aside until I have some use cases and know what
+I want...</p>
 
 </div>
 
