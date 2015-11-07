@@ -86,7 +86,7 @@ matched.</p>
 
 <code><pre>LR0 : { Rule rule, Integer dot }
 next_symbol(lr0) =
-    if(lr0.dot &lt; lr0.rule.length) rule.production[rule.dot]</pre></code>
+    if(lr0.dot &lt; lr0.rule.production.length) lr0.rule.production[lr0.dot]</pre></code>
 
 <p>In this implementation we never use complete LR(0) items: we always
 promote them to a symbol so that all parse trees for a symbol will be
@@ -94,7 +94,7 @@ combined under one Earley item no matter which production they derive
 from.</p>
 
 <pre><code>advance(lr0) =
-    if(lr0.dot == lr0.rule.length) lr0.rule.symbol
+    if(lr0.dot == lr0.rule.production.length) lr0.rule.symbol
     else new LR0(lr0.rule, lr0.dot+1)</code></pre>
 
 <p>Earley's algorithm works by keeping a table of all possible matches,
@@ -107,7 +107,7 @@ quickly find the items and rules we need to look at.</p>
 matches) or an LR(0) item (for partial matches) plus references to the
 sets (and hence input positions) where the match starts and ends.</p>
 
-<pre><code>Item : { Symbol | LR0 : tag, Set start, Set end }
+<pre><code>Item : { Symbol|LR0 tag, Set start, Set end }
 
 Set : {
     Grammar grammar,
